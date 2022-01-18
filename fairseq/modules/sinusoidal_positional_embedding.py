@@ -3,6 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from decimal import Decimal
 import math
 from typing import Any, List, Optional
 
@@ -35,7 +36,7 @@ class SinusoidalPositionalEmbedding(nn.Module):
 
     @staticmethod
     def get_embedding(
-        num_embeddings: int, embedding_dim: int, padding_idx: Optional[int] = None
+        num_embeddings_i: int, embedding_dim_i: int, padding_idx_i: Optional[int] = None
     ):
         """Build sinusoidal embeddings.
 
@@ -46,41 +47,48 @@ class SinusoidalPositionalEmbedding(nn.Module):
             import logging
             logging.getLogger(__name__).debug("[SinusoidalPositionalEmbedding|get_embedding]: " + x)
         
-        log("Building sinusoidal embeddings with args: " + str([num_embeddings, embedding_dim, padding_idx]))
-        import sympy
-
+        log("Building sinusoidal embeddings with args: " + str([num_embeddings_i, embedding_dim_i, padding_idx_i]))
+        num_embeddings = Decimal(num_embeddings_i)
+        embedding_dim = Decimal(embedding_dim_i)
+        padding_idx = Decimal(padding_idx_i) if padding_idx_i is not None else None
+                                                                                                                           
         half_dim = embedding_dim // 2
-        emb = sympy.log(10000) / (half_dim - 1)
+        emb = Decimal(10000).ln() / (half_dim - 1)
                                                                             
         #Prevent floating point nonsense by setting to float64
-        emb = [sympy.exp(x * -emb) for x in range(half_dim)]
-        emb = [[x * y for y in range(num_embeddings)] for x in emb]
-
-        log("Running actual sin/cos operation...")
+        print("...")
+        emb = [(-emb * Decimal(x)).exp() for x in range(int(half_dim))]
+        print("...")
+        emb = [[x * y for y in emb] for x in range(int(num_embeddings))]
+        print("...")
+                                                                                                                           
         ret_sin: List[List[float]] = []
         ret_cos: List[List[float]] = []
+
+
         for i in range(len(emb)):
             ret_sin.append([
-                float(sympy.sin(
+                float(math.sin(
                     emb[i][j]
-                ).evalf()) for j in range(len(emb[i]))
+                )) for j in range(len(emb[i]))
             ])
             ret_cos.append([
-                float(sympy.cos(
+                float(math.cos(
                     emb[i][j]
-                ).evalf()) for j in range(len(emb[i]))
+                )) for j in range(len(emb[i]))
             ])
 
-        emb = torch.cat([torch.tensor(ret_sin, dtype=torch.float), torch.tensor(ret_cos, dtype=torch.float)], dim=1).view(
-            num_embeddings, -1
+        emb = torch.cat([torch.tensor(ret_sin, dtype=torch.float), torch.tensor(ret_cos, dtype=torch.float)], dim=1)
+        emb = emb.view(
+            int(num_embeddings), -1
         )
-
+                                                                                                                           
         if embedding_dim % 2 == 1:
             # zero pad
-            emb = torch.cat([emb, torch.zeros(num_embeddings, 1)], dim=1)
-
+            emb = torch.cat([emb, torch.zeros(int(num_embeddings), 1)], dim=1)
+                                                                                                                           
         if padding_idx is not None:
-            emb[padding_idx, :] = 0
+            emb[int(padding_idx), :] = 0
         
         return emb
 
