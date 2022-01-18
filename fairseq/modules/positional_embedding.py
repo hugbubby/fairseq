@@ -3,11 +3,15 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+
+import logging
+
 import torch.nn as nn
 
 from .learned_positional_embedding import LearnedPositionalEmbedding
 from .sinusoidal_positional_embedding import SinusoidalPositionalEmbedding
 
+logger = logging.getLogger(__name__)
 
 def PositionalEmbedding(
     num_embeddings: int,
@@ -15,6 +19,10 @@ def PositionalEmbedding(
     padding_idx: int,
     learned: bool = False,
 ):
+    def log(x: str):
+        logger.debug("[PositionalEmbedding]: " + x)
+
+    log("Creating basic positional embedding with args: " + str([num_embeddings, embedding_dim, padding_idx, learned]))
     if learned:
         # if padding_idx is specified then offset the embedding ids by
         # this index and adjust num_embeddings appropriately

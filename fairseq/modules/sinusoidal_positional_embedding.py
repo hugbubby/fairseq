@@ -7,9 +7,10 @@ import math
 from typing import Any, Optional
 
 import torch
-import torch.onnx.operators
-from fairseq import utils
 from torch import Tensor, nn
+import torch.onnx.operators
+
+from fairseq import utils
 
 
 class SinusoidalPositionalEmbedding(nn.Module):
@@ -41,15 +42,23 @@ class SinusoidalPositionalEmbedding(nn.Module):
         This matches the implementation in tensor2tensor, but differs slightly
         from the description in Section 3.5 of "Attention Is All You Need".
         """
+        def log(x: str):
+            import logging
+            logging.getLogger(__name__).debug("[SinusoidalPositionalEmbedding|get_embedding]: " + x)
+        log("Running SPE with args: " + str([num_embeddings, embedding_dim, padding_idx]))
+
         half_dim = embedding_dim // 2
         emb = math.log(10000) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, dtype=torch.float) * -emb)
-        emb = torch.arange(num_embeddings, dtype=torch.float).unsqueeze(
+
+        #Prevent floating point nonsense by setting to float64
+        emb = torch.exp(torch.arange(half_dim, dtype=torch.float64) * -emb)
+        emb = torch.arange(num_embeddings, dtype=torch.float64).unsqueeze(
             1
         ) * emb.unsqueeze(0)
         emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1).view(
             num_embeddings, -1
         )
+        
         if embedding_dim % 2 == 1:
             # zero pad
             emb = torch.cat([emb, torch.zeros(num_embeddings, 1)], dim=1)
