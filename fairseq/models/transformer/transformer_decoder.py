@@ -3,11 +3,14 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+import logging
 import math
 from typing import Any, Dict, List, Optional
 
 import torch
+from torch import Tensor
 import torch.nn as nn
+
 from fairseq import utils
 from fairseq.distributed import fsdp_wrap
 from fairseq.models import FairseqIncrementalDecoder
@@ -24,8 +27,8 @@ from fairseq.modules import (
 from fairseq.modules import transformer_layer
 from fairseq.modules.checkpoint_activations import checkpoint_wrapper
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
-from torch import Tensor
 
+logger = logging.getLogger(__name__)
 
 # rewrite name for backward compatibility in `make_generation_fast_`
 def module_name_fordropout(module_name: str) -> str:
@@ -56,8 +59,12 @@ class TransformerDecoderBase(FairseqIncrementalDecoder):
         no_encoder_attn=False,
         output_projection=None,
     ):
+        def log(x: str):
+            logger.debug("[TransformerDecoderBase|__init__]: " + x)
         self.cfg = cfg
+        log("Inittting fairseq incremental decoder with '" + str(type(dictionary)) + "'")
         super().__init__(dictionary)
+        log("Registering version buffer at [3]")
         self.register_buffer("version", torch.Tensor([3]))
         self._future_mask = torch.empty(0)
 
@@ -80,12 +87,14 @@ class TransformerDecoderBase(FairseqIncrementalDecoder):
         self.embed_scale = 1.0 if cfg.no_scale_embedding else math.sqrt(embed_dim)
 
         if not cfg.adaptive_input and cfg.quant_noise.pq > 0:
+            log("Applying quant noise")
             self.quant_noise = apply_quant_noise_(
                 nn.Linear(embed_dim, embed_dim, bias=False),
                 cfg.quant_noise.pq,
                 cfg.quant_noise.pq_block_size,
             )
         else:
+            log("Skipping quant noise")
             self.quant_noise = None
 
         self.project_in_dim = (
@@ -110,6 +119,7 @@ class TransformerDecoderBase(FairseqIncrementalDecoder):
 
         self.cross_self_attention = cfg.cross_self_attention
 
+        log("Instantiating self.layers")
         if self.decoder_layerdrop > 0.0:
             self.layers = LayerDropModuleList(p=self.decoder_layerdrop)
         else:
@@ -123,8 +133,10 @@ class TransformerDecoderBase(FairseqIncrementalDecoder):
         self.num_layers = len(self.layers)
 
         if cfg.decoder.normalize_before and not cfg.no_decoder_final_norm:
+            log("Setting self.layer_norm")
             self.layer_norm = LayerNorm(embed_dim, export=cfg.export)
         else:
+            log("Skipping self.layer_norm")
             self.layer_norm = None
 
         self.project_out_dim = (
@@ -136,9 +148,12 @@ class TransformerDecoderBase(FairseqIncrementalDecoder):
         self.adaptive_softmax = None
         self.output_projection = output_projection
         if self.output_projection is None:
+            log("Building output projection")
             self.build_output_projection(cfg, dictionary, embed_tokens)
 
     def build_output_projection(self, cfg, dictionary, embed_tokens):
+        def log(x: str):
+            logger.debug("[TransformerDecoderBase|build_output_projection]: " + x)
         if cfg.adaptive_softmax_cutoff is not None:
             self.adaptive_softmax = AdaptiveSoftmax(
                 len(dictionary),
@@ -164,7 +179,9 @@ class TransformerDecoderBase(FairseqIncrementalDecoder):
                 self.output_projection.weight, mean=0, std=self.output_embed_dim ** -0.5
             )
         num_base_layers = cfg.base_layers
+        log("Inserting " + str(num_base_layers) + " layers...") 
         for i in range(num_base_layers):
+            log("Inserting layer " + str(i) + "...")
             self.layers.insert(
                 ((i + 1) * cfg.decoder.layers) // (num_base_layers + 1),
                 BaseLayer(cfg),

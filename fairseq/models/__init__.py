@@ -81,11 +81,11 @@ def build_model(cfg: FairseqDataclass, task):
     if model_type in ARCH_MODEL_REGISTRY:
         # case 1: legacy models
         model = ARCH_MODEL_REGISTRY[model_type]
-        log("Loading legacy model: '" + str(type(model)) + "'")
+        log("Loading legacy model: '" + str(model) + "'")
     elif model_type in MODEL_DATACLASS_REGISTRY:
         # case 2: config-driven models
         model = MODEL_REGISTRY[model_type]
-        log("Loading config-driven model: '" + str(type(model)) + "'")
+        log("Loading config-driven model: '" + str(model) + "'")
 
         # set defaults from dataclass. note that arch name and model name can be the same
         dc = MODEL_DATACLASS_REGISTRY[model_type]
