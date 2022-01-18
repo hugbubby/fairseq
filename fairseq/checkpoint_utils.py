@@ -5,19 +5,19 @@
 
 import ast
 import collections
+from collections import OrderedDict
 import contextlib
 import logging
 import os
+from pathlib import Path
 import re
 import time
 import traceback
-from collections import OrderedDict
-from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 import numpy as np
-import torch
 from omegaconf import DictConfig, OmegaConf, open_dict
+import torch
 
 from fairseq.data import data_utils
 from fairseq.dataclass.configs import CheckpointConfig
@@ -30,7 +30,6 @@ from fairseq.file_io import PathManager
 from fairseq.models import FairseqDecoder, FairseqEncoder
 
 logger = logging.getLogger(__name__)
-
 
 def save_checkpoint(cfg: CheckpointConfig, trainer, epoch_itr, val_loss):
     from fairseq import meters
@@ -292,6 +291,10 @@ def load_checkpoint_to_cpu(path, arg_overrides=None, load_on_all_ranks=False):
     There's currently no support for > 1 but < all processes loading the
     checkpoint on each node.
     """
+    def log(x: str):
+        logger.debug("[load_checkpoint_to_cpu]: " + x)
+    log("Arguments: " + ", ".join(["('" + str(type(val)) + "', '" + str(val) + "')" for val in [path, arg_overrides, load_on_all_ranks]]))
+
     local_path = PathManager.get_local_path(path)
     # The locally cached file returned by get_local_path() may be stale for
     # remote files that are periodically updated/overwritten (ex:
@@ -373,6 +376,10 @@ def load_model_ensemble(
 def get_maybe_sharded_checkpoint_filename(
     filename: str, suffix: str, shard_idx: int, num_shards: int
 ) -> str:
+    def log(x: str):
+        logger.debug("[get_maybe_sharded_checkpoint_filename]: " + x)
+    log("Arguments: " + ", ".join(["('" + str(type(val)) + "', '" + str(val) + "')" for val in [filename, suffix, shard_idx, num_shards]]))
+
     orig_filename = filename
     filename = filename.replace(".pt", suffix + ".pt")
     fsdp_filename = filename[:-3] + f"-shard{shard_idx}.pt"
@@ -394,6 +401,11 @@ def load_model_ensemble_and_task(
     num_shards=1,
     state=None,
 ):
+    def log(x: str):
+        logger.debug("[load_model_ensemble_and_task]: " + x)
+
+    log("Arguments: " + ", ".join(["('" + str(type(val)) + "', '" + str(val) + "')" for val in [filenames, arg_overrides, task, strict, suffix, num_shards, state]]))
+
     assert state is None or len(filenames) == 1
 
     from fairseq import tasks
@@ -401,17 +413,21 @@ def load_model_ensemble_and_task(
     assert not (
         strict and num_shards > 1
     ), "Cannot load state dict with strict=True and checkpoint shards > 1"
+
     ensemble = []
     cfg = None
     for filename in filenames:
+        log("Handling filename: '" + str(filename) + "'")
         orig_filename = filename
         model_shard_state = {"shard_weights": [], "shard_metadata": []}
         assert num_shards > 0
         st = time.time()
         for shard_idx in range(num_shards):
+            log("Handling shard idx: '" + str(shard_idx) + "'")
             filename = get_maybe_sharded_checkpoint_filename(
                 orig_filename, suffix, shard_idx, num_shards
             )
+            log("Got potential checkpoint filename: '" + str(filename) + "'")
 
             if not PathManager.exists(filename):
                 raise IOError("Model file not found: {}".format(filename))
@@ -427,12 +443,16 @@ def load_model_ensemble_and_task(
                 )
 
             if task is None:
+                log("Setting up task")
                 task = tasks.setup_task(cfg.task)
 
             if "task_state" in state:
+                log("Loading state dict into task...")
                 task.load_state_dict(state["task_state"])
+                log("Loaded state dict into task")
 
             if "fsdp_metadata" in state and num_shards > 1:
+                log("Found fsdp metadata; loading...")
                 model_shard_state["shard_weights"].append(state["model"])
                 model_shard_state["shard_metadata"].append(state["fsdp_metadata"])
                 # check FSDP import before the code goes too far
@@ -442,10 +462,12 @@ def load_model_ensemble_and_task(
                         "Please install fairscale with: pip install fairscale"
                     )
                 if shard_idx == num_shards - 1:
+                    log("Last shard so consolidating shard weights...")
                     consolidated_model_state = FSDP.consolidate_shard_weights(
                         shard_weights=model_shard_state["shard_weights"],
                         shard_metadata=model_shard_state["shard_metadata"],
                     )
+                    log("Building cfg.model...")
                     model = task.build_model(cfg.model)
                     if (
                         "optimizer_history" in state
@@ -455,10 +477,12 @@ def load_model_ensemble_and_task(
                         model.set_num_updates(
                             state["optimizer_history"][-1]["num_updates"]
                         )
+                    log("Loading consolidated model state dict...")
                     model.load_state_dict(
                         consolidated_model_state, strict=strict, model_cfg=cfg.model
                     )
             else:
+                log("Building model...")
                 # model parallel checkpoint or unsharded checkpoint
                 model = task.build_model(cfg.model)
                 if (
@@ -467,6 +491,7 @@ def load_model_ensemble_and_task(
                     and "num_updates" in state["optimizer_history"][-1]
                 ):
                     model.set_num_updates(state["optimizer_history"][-1]["num_updates"])
+                log("Loading model state dict...")
                 model.load_state_dict(
                     state["model"], strict=strict, model_cfg=cfg.model
                 )

@@ -8,10 +8,11 @@ import argparse
 import copy
 import logging
 import os
+from posixpath import join
 from typing import Any, Dict, Iterator, List
 
-import torch
 from omegaconf import open_dict
+import torch
 from torch import nn
 
 from fairseq import utils
@@ -29,6 +30,12 @@ def from_pretrained(
 ):
     from fairseq import checkpoint_utils, file_utils
 
+    def log(x: str):
+        logger.debug("[from_pretrained]: " + x)
+    
+    log("Running with args: '" + model_name_or_path + "', '" + checkpoint_file + "', '" + data_name_or_path + "', '" + str({key: "[REDACTED]" for key in archive_map}))
+    log("Running with kwargs: " + str(["'" + key + "'" for key in kwargs.keys()]))
+    
     if archive_map is not None:
         if model_name_or_path in archive_map:
             model_name_or_path = archive_map[model_name_or_path]
@@ -50,6 +57,8 @@ def from_pretrained(
             model_name_or_path = model_name_or_path["path"]
 
     model_path = file_utils.load_archive_file(model_name_or_path)
+    log("Loaded model_path via file_utils: " + str(model_path))
+
 
     # convenience hack for loading data and BPE codes from model archive
     if data_name_or_path.startswith("."):
@@ -66,10 +75,12 @@ def from_pretrained(
         path = os.path.join(model_path, file)
         if os.path.exists(path):
             kwargs[arg] = path
-
+    
+    log("Running with new kwargs: " + str(["'" + key + "'" for key in kwargs.keys()]))
     if "user_dir" in kwargs:
         utils.import_user_module(argparse.Namespace(user_dir=kwargs["user_dir"]))
 
+    log("Loading model ensemble and task...")
     models, args, task = checkpoint_utils.load_model_ensemble_and_task(
         [os.path.join(model_path, cpt) for cpt in checkpoint_file.split(os.pathsep)],
         arg_overrides=kwargs,

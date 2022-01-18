@@ -5,7 +5,10 @@
 
 
 from dataclasses import dataclass, field
+import logging
 from typing import Optional
+
+from omegaconf import II
 
 from fairseq import options, utils
 from fairseq.dataclass import ChoiceEnum, FairseqDataclass
@@ -21,11 +24,11 @@ from fairseq.models.transformer import (
 )
 from fairseq.modules import AdaptiveInput, CharacterTokenEmbedder
 from fairseq.utils import safe_getattr, safe_hasattr
-from omegaconf import II
 
 
 DEFAULT_MAX_TARGET_POSITIONS = 1024
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class TransformerLanguageModelConfig(FairseqDataclass):
@@ -258,6 +261,8 @@ class TransformerLanguageModel(FairseqLanguageModel):
 
     @classmethod
     def build_model(cls, args, task):
+        def log(x: str):
+            logger.debug("[TransformerLanguageModel|build_model]: " + x)
         """Build a new model instance."""
 
         if args.decoder_layers_to_keep:
@@ -302,9 +307,11 @@ class TransformerLanguageModel(FairseqLanguageModel):
             )
             assert args.decoder_input_dim == args.decoder_output_dim
 
+        log("Instantiating TransformerDecoder...")
         decoder = TransformerDecoder(
             args, task.target_dictionary, embed_tokens, no_encoder_attn=True
         )
+        log("Returning FairseqLangaugeModel __init__ with decoder...")
         return cls(decoder)
 
     @classmethod

@@ -5,14 +5,16 @@
 """isort:skip_file"""
 
 import argparse
-import importlib
-import os
 from contextlib import ExitStack
+import importlib
+import logging
+import os
+
+from hydra.core.config_store import ConfigStore
+from omegaconf import OmegaConf, open_dict
 
 from fairseq.dataclass import FairseqDataclass
 from fairseq.dataclass.utils import merge_with_parent
-from hydra.core.config_store import ConfigStore
-from omegaconf import open_dict, OmegaConf
 
 from .composite_encoder import CompositeEncoder
 from .distributed_fairseq_model import DistributedFairseqModel
@@ -51,8 +53,12 @@ __all__ = [
     "FairseqMultiModel",
 ]
 
+logger = logging.getLogger(__name__)
 
 def build_model(cfg: FairseqDataclass, task):
+
+    def log(x: str):
+        logger.debug("[build_model]: " + x)
 
     model = None
     model_type = getattr(cfg, "_name", None) or getattr(cfg, "arch", None)
@@ -69,17 +75,18 @@ def build_model(cfg: FairseqDataclass, task):
                 "Available models: "
                 + str(MODEL_DATACLASS_REGISTRY.keys())
                 + " Requested model type: "
-                + model_type
+                + str(model_type)
             )
 
     if model_type in ARCH_MODEL_REGISTRY:
         # case 1: legacy models
         model = ARCH_MODEL_REGISTRY[model_type]
+        log("Loading legacy model: '" + str(type(model)) + "'")
     elif model_type in MODEL_DATACLASS_REGISTRY:
         # case 2: config-driven models
         model = MODEL_REGISTRY[model_type]
+        log("Loading config-driven model: '" + str(type(model)) + "'")
 
-    if model_type in MODEL_DATACLASS_REGISTRY:
         # set defaults from dataclass. note that arch name and model name can be the same
         dc = MODEL_DATACLASS_REGISTRY[model_type]
 
@@ -87,14 +94,14 @@ def build_model(cfg: FairseqDataclass, task):
             cfg = dc.from_namespace(cfg)
         else:
             cfg = merge_with_parent(dc(), cfg)
-    else:
-        if model_type in ARCH_CONFIG_REGISTRY:
-            with open_dict(cfg) if OmegaConf.is_config(cfg) else ExitStack():
-                # this calls the different "arch" functions (like base_architecture()) that you indicate
-                # if you specify --arch on the command line. this is only applicable to the old argparse based models
-                # hydra models should expose different architectures via different config files
-                # it will modify the cfg object and default parameters according to the arch
-                ARCH_CONFIG_REGISTRY[model_type](cfg)
+
+    if model_type not in MODEL_DATACLASS_REGISTRY and model_type in ARCH_CONFIG_REGISTRY:
+        with open_dict(cfg) if OmegaConf.is_config(cfg) else ExitStack():
+            # this calls the different "arch" functions (like base_architecture()) that you indicate
+            # if you specify --arch on the command line. this is only applicable to the old argparse based models
+            # hydra models should expose different architectures via different config files
+            # it will modify the cfg object and default parameters according to the arch
+            ARCH_CONFIG_REGISTRY[model_type](cfg)
 
     assert model is not None, (
         f"Could not infer model type from {cfg}. "
@@ -102,6 +109,8 @@ def build_model(cfg: FairseqDataclass, task):
         + f" Requested model type: {model_type}"
     )
 
+   
+    log("Finally building model: '" + str(type(model)) + "', '" + str(type(cfg)) + "', '" + str(type(task)) + "'")
     return model.build_model(cfg, task)
 
 
