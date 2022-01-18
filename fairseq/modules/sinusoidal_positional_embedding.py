@@ -4,7 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import torch
 from torch import Tensor, nn
@@ -45,25 +45,43 @@ class SinusoidalPositionalEmbedding(nn.Module):
         def log(x: str):
             import logging
             logging.getLogger(__name__).debug("[SinusoidalPositionalEmbedding|get_embedding]: " + x)
-        log("Running SPE with args: " + str([num_embeddings, embedding_dim, padding_idx]))
+        
+        log("Building sinusoidal embeddings with args: " + str([num_embeddings, embedding_dim, padding_idx]))
+        import sympy
 
         half_dim = embedding_dim // 2
-        emb = math.log(10000) / (half_dim - 1)
-
+        emb = sympy.log(10000) / (half_dim - 1)
+                                                                            
         #Prevent floating point nonsense by setting to float64
-        emb = torch.exp(torch.arange(half_dim, dtype=torch.float64) * -emb)
-        emb = torch.arange(num_embeddings, dtype=torch.float64).unsqueeze(
-            1
-        ) * emb.unsqueeze(0)
-        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1).view(
+        emb = [sympy.exp(x * -emb) for x in range(half_dim)]
+        emb = [[x * y for y in range(num_embeddings)] for x in emb]
+
+        log("Running actual sin/cos operation...")
+        ret_sin: List[List[float]] = []
+        ret_cos: List[List[float]] = []
+        for i in range(len(emb)):
+            ret_sin.append([
+                float(sympy.sin(
+                    emb[i][j]
+                ).evalf()) for j in range(len(emb[i]))
+            ])
+            ret_cos.append([
+                float(sympy.cos(
+                    emb[i][j]
+                ).evalf()) for j in range(len(emb[i]))
+            ])
+
+        emb = torch.cat([torch.tensor(ret_sin, dtype=torch.float), torch.tensor(ret_cos, dtype=torch.float)], dim=1).view(
             num_embeddings, -1
         )
-        
+
         if embedding_dim % 2 == 1:
             # zero pad
             emb = torch.cat([emb, torch.zeros(num_embeddings, 1)], dim=1)
+
         if padding_idx is not None:
             emb[padding_idx, :] = 0
+        
         return emb
 
     def forward(
