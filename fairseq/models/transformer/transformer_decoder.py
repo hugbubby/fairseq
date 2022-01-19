@@ -348,6 +348,7 @@ class TransformerDecoderBase(FairseqIncrementalDecoder):
         # decoder layers
         attn: Optional[Tensor] = None
         inner_states: List[Optional[Tensor]] = [x]
+        new_incremental_state: Dict[str, Dict[str, Optional[Tensor]]] = torch.jit.annotate(Dict[str, Dict[str, Optional[Tensor]]], {})
         for idx, layer in enumerate(self.layers):
             if incremental_state is None and not full_context_alignment:
                 self_attn_mask = self.buffered_future_mask(x)
@@ -358,7 +359,7 @@ class TransformerDecoderBase(FairseqIncrementalDecoder):
                 x,
                 enc,
                 padding_mask,
-                incremental_state,
+                incremental_state if incremental_state is not None else new_incremental_state,
                 self_attn_mask=self_attn_mask,
                 self_attn_padding_mask=self_attn_padding_mask,
                 need_attn=bool((idx == alignment_layer)),
@@ -384,7 +385,7 @@ class TransformerDecoderBase(FairseqIncrementalDecoder):
         if self.project_out_dim is not None:
             x = self.project_out_dim(x)
 
-        return x, {"attn": [attn], "inner_states": inner_states}
+        return x, {"attn": [attn], "inner_states": inner_states, "incremental_state": incremental_state if incremental_state is not None else new_incremental_state}
 
     def output_layer(self, features):
         """Project features to the vocabulary size."""

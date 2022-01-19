@@ -35,8 +35,9 @@ class FairseqIncrementalState(object):
         if incremental_state is None or full_key not in incremental_state:
             if incremental_state is not None:
                 log("Key not found; incremental state instead looks like: " + str(list(incremental_state.keys())))
+                return None
             else:
-                log("Key not ofund; incremental state is none")
+                log("Key not found; incremental state is none")
                 return None
         log("Key found; returning...")
         return incremental_state[full_key]
