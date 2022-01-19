@@ -48,7 +48,6 @@ class SinusoidalPositionalEmbedding(nn.Module):
             logging.getLogger(__name__).debug("[SinusoidalPositionalEmbedding|get_embedding]: " + x)
         
         log("Building sinusoidal embeddings with args: " + str([num_embeddings_i, embedding_dim_i, padding_idx_i]))
-
         num_embeddings = Decimal(num_embeddings_i)
         embedding_dim = Decimal(embedding_dim_i)
         padding_idx = Decimal(padding_idx_i) if padding_idx_i is not None else None
@@ -58,8 +57,25 @@ class SinusoidalPositionalEmbedding(nn.Module):
                                                                             
         #Prevent floating point nonsense by setting to float64
         emb = [(-emb * Decimal(x)).exp() for x in range(int(half_dim))]
-        emb = torch.tensor([[x * y for y in emb] for x in range(int(num_embeddings))], dtype=torch.float64)
-        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
+        emb = [[x * y for y in emb] for x in range(int(num_embeddings))]
+                                                                                                                           
+        ret_sin: List[List[float]] = []
+        ret_cos: List[List[float]] = []
+
+
+        for i in range(len(emb)):
+            ret_sin.append([
+                float(math.sin(
+                    emb[i][j]
+                )) for j in range(len(emb[i]))
+            ])
+            ret_cos.append([
+                float(math.cos(
+                    emb[i][j]
+                )) for j in range(len(emb[i]))
+            ])
+
+        emb = torch.cat([torch.tensor(ret_sin, dtype=torch.float), torch.tensor(ret_cos, dtype=torch.float)], dim=1)
         emb = emb.view(
             int(num_embeddings), -1
         )
