@@ -3,11 +3,13 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import uuid
+import logging
 from typing import Dict, Optional
+import uuid
 
 from torch import Tensor
 
+logger = logging.getLogger(__name__)
 
 class FairseqIncrementalState(object):
     def __init__(self, *args, **kwargs):
@@ -25,10 +27,18 @@ class FairseqIncrementalState(object):
         incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]],
         key: str,
     ) -> Optional[Dict[str, Optional[Tensor]]]:
+        def log(x: str):
+            logger.debug("[FairseqIncrementalState|get_incremental_state]: " + x)
         """Helper for getting incremental state for an nn.Module."""
         full_key = self._get_full_incremental_state_key(key)
+        log("Getting incremental state with key: '" + full_key + "'")
         if incremental_state is None or full_key not in incremental_state:
-            return None
+            if incremental_state is not None:
+                log("Key not found; incremental state instead looks like: " + str(list(incremental_state.keys())))
+            else:
+                log("Key not ofund; incremental state is none")
+                return None
+        log("Key found; returning...")
         return incremental_state[full_key]
 
     def set_incremental_state(
